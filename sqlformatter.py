@@ -3,8 +3,8 @@ from io import StringIO
 from datetime import datetime
 
 # ---------- Optional deps ----------
-# We prefer sqlglot for robust, dialect-aware formatting.
-# If it's not available, we fall back to sqlparse (limited/no dialect support).
+# Prefer sqlglot for robust, dialect-aware formatting.
+# If it's not available, fall back to sqlparse (limited/no dialect support).
 try:
     import sqlglot
     from sqlglot import parse_one
@@ -50,7 +50,8 @@ with st.sidebar:
     width = st.number_input("Max line width", min_value=40, max_value=200, value=120, step=5)
     leading_comma = st.toggle("Leading commas", value=False, help="If on, places commas at line starts where applicable.")
     normalize = st.toggle("Normalize (canonicalize)", value=False, help="Standardize some expressions (sqlglot).")
-    remove_comments = st.toggle("Strip comments", value=False)    compact = st.toggle("Compact/minify", value=False, help="Crush extra whitespace (overrides pretty settings).")
+    remove_comments = st.toggle("Strip comments", value=False)
+    compact = st.toggle("Compact/minify", value=False, help="Crush extra whitespace (overrides pretty settings).")
     single_line_safe = st.toggle("EOL '--' → block comments", value=False, help="Convert end-of-line double-dash comments to /* ... */ so queries survive single-line storage.")
 
     st.caption(
@@ -75,23 +76,21 @@ with col_out:
     out_container = st.empty()
 
 # ---------------- Helpers ----------------
-
 def dash_to_block(sql: str) -> str:
-    """Convert end-of-line double-dash comments to block comments.
+    """Convert end-of-line `-- ...` comments to block comments.
     Example: SELECT 1 -- note  -> SELECT 1 /* note */
     Safer when queries are collapsed to a single line by storage layers.
     """
     import re
-    return re.sub(r"--[^
-]*", lambda m: "/* " + m.group(0)[2:].strip() + " */", sql)
+    # If you'd like the cross-platform tweak, change [^\n]* to [^\r\n]*
+    return re.sub(r"--[^\n]*", lambda m: "/* " + m.group(0)[2:].strip() + " */", sql)
 
 def format_with_sqlglot(sql: str) -> str:
     # Optional: make single-line safe by converting -- EOL comments first
     if single_line_safe:
         sql = dash_to_block(sql)
-    # Remove comments by simple pass if requested (sqlglot formatting preserves comments)
+    # Remove comments if requested (sqlglot preserves comments otherwise)
     if remove_comments:
-        # naive strip: remove lines starting with -- and block comments /* */
         import re
         sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
         sql = "\n".join([ln for ln in sql.splitlines() if not ln.strip().startswith("--")])
@@ -123,18 +122,15 @@ def format_with_sqlglot(sql: str) -> str:
         except Exception:
             raise e
 
-
 def format_with_sqlparse(sql: str) -> str:
     if not HAVE_SQLPARSE:
         raise RuntimeError("Neither sqlglot nor sqlparse available.")
 
     if single_line_safe:
         sql = dash_to_block(sql)
-        raise RuntimeError("Neither sqlglot nor sqlparse available.")
 
     # sqlparse options
     kw_case = keyword_case.upper() if keyword_case != "capitalize" else "upper"
-    ident_kw = None  # sqlparse lacks identifier case handling
 
     if remove_comments:
         import re
